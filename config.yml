@@ -5,3 +5,5 @@ email:
   smtp_password: your_email_password
   from_email: your_email@gmail.com
   to_email: recipient_email@gmail.com
+  day_to_run: 4
+
