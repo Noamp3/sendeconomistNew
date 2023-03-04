@@ -1,5 +1,5 @@
-from datetime import datetime
-
+import time
+from datetime import datetime, timedelta
 import requests
 import re
 import smtplib
@@ -32,29 +32,17 @@ def compose_email(from_addr, to_addr, subject, body, file):
     return msg
 
 
-def send_email(msg):
+def send_email(msg, from_addr, to_addr, smtp_port, smtp_user, smtp_password):
     server = smtplib.SMTP(smtp_host, smtp_port)
     server.starttls()
     server.login(smtp_username, smtp_password)
-    server.sendmail(from_email, [to_email], msg.as_string())
+    server.sendmail(from_email, [to_addr], msg.as_string())
     server.quit()
 
 
-# run the script only if it's friday
-
-# Load the email configuration from the YAML file
-with open('config.yml', 'r') as f:
-    config = yaml.safe_load(f)['email']
-smtp_host = config['smtp_host']
-smtp_port = config['smtp_port']
-smtp_username = config['smtp_username']
-smtp_password = config['smtp_password']
-from_email = config['from_email']
-to_email = config['to_email']
-day_to_run = config['day_to_run']
-
-if datetime.today().weekday() == day_to_run:
+def download_latest_economist():
     try:
+        msg_text = ""
         # Get the latest folder URL in the repository
         repo_url = 'https://github.com/hehonghui/awesome-english-ebooks/tree/master/01_economist'
         response = requests.get(repo_url)
@@ -79,11 +67,38 @@ if datetime.today().weekday() == day_to_run:
             f.write(response.content)
         msg_text += f'\nThe file "{filename}" was downloaded successfully.'
         print(msg_text)
-        download_success = True
+        saturday = str(datetime.today().date() + timedelta(days=1)).replace(
+            '-', '.')
+        if saturday in filename:
+            return True, filename
+        return False, filename
     except Exception as e:
         msg_text += f'\nAn error occurred while downloading the file: {e}'
         print(msg_text)
-        download_success = False
+        return False, filename
+
+
+
+# Load the email configuration from the YAML file
+with open('configTest.yml', 'r') as f:
+    config = yaml.safe_load(f)['email']
+smtp_host = config['smtp_host']
+smtp_port = config['smtp_port']
+smtp_username = config['smtp_username']
+smtp_password = config['smtp_password']
+from_email = config['from_email']
+to_email = config['to_email']
+day_to_run = config['day_to_run']
+
+# run the script only if it's friday
+if datetime.today().weekday() == day_to_run:
+    count = 0
+    while count < 3:
+        download_success, filename = download_latest_economist()
+        if download_success:
+            break
+        count += 1
+        time.sleep(60*60*3)
 
     # Compose the email message
     if download_success:
@@ -94,10 +109,13 @@ if datetime.today().weekday() == day_to_run:
         except Exception as e:
             msg_text += f'\nAn error occurred while attaching the file: {e}'
             print(msg_text)
+    else:
+        msg_text += 'The latest Economist ebook was not found or could not be downloaded.'
+
 
     # Send the email using SMTP
     try:
-        send_email(msg)
+        send_email(msg, from_email, to_email, smtp_port, smtp_username, smtp_password)
         msg_text += f'\nThe email was sent successfully.'
     except Exception as e:
         download_success = False
@@ -106,11 +124,11 @@ if datetime.today().weekday() == day_to_run:
 
     # Send an info mail
     status = 'Success!' if download_success else 'Failed!:('
-    msg = compose_email(from_email, from_email,
+    report_msg = compose_email(from_email, from_email,
                         f'Latest Economist ebook sending report - {status}',
                         msg_text, None)
     try:
-        send_email(msg)
+        send_email(report_msg, from_email, from_email, smtp_port, smtp_username, smtp_password)
     except Exception as e:
         print(f'An error occurred while sending the info email: {e}')
 
